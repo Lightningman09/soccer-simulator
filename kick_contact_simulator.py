@@ -25,11 +25,12 @@ class ContactParameters:
 
     force_newtons: float = 850.0
     contact_time_seconds: float = 0.010
-    elevation_degrees: float = 20.0
+    foot_lift_degrees: float = 0.0
     contact_y: float = 0.030
     contact_z: float = -0.040
     ball_mass: float = 0.43
     ball_radius: float = 0.11
+    manual_force_elevation_degrees: float | None = None
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,12 @@ class ContactResult:
     impulse_x: float
     impulse_y: float
     impulse_z: float
+    contact_derived_elevation_degrees: float
+    applied_force_elevation_degrees: float
+    ground_reaction_impulse_z: float
+    net_impulse_x: float
+    net_impulse_y: float
+    net_impulse_z: float
     launch_speed: float
     launch_angle_degrees: float
     angular_impulse_x: float
@@ -55,8 +62,12 @@ class ContactResult:
     translational_energy: float
     rotational_energy: float
 
-    def kick(self) -> Kick:
-        return Kick(self.launch_speed, self.launch_angle_degrees)
+    def kick(self, initial_height: float = 0.0) -> Kick:
+        return Kick(
+            self.launch_speed,
+            self.launch_angle_degrees,
+            initial_height=initial_height,
+        )
 
     def spin(self) -> Spin:
         return Spin(
@@ -90,20 +101,38 @@ def calculate_contact(parameters: ContactParameters) -> ContactResult:
         raise ValueError("Contact time must be positive.")
     if parameters.ball_mass <= 0 or parameters.ball_radius <= 0:
         raise ValueError("Ball mass and radius must be positive.")
-    if not 0 <= parameters.elevation_degrees < 90:
-        raise ValueError("Force elevation must be at least 0 and below 90 degrees.")
-
     radial_square = parameters.contact_y**2 + parameters.contact_z**2
     radius_square = parameters.ball_radius**2
     if radial_square > radius_square:
         raise ValueError("The selected contact point lies outside the ball.")
 
     contact_x = -math.sqrt(max(0.0, radius_square - radial_square))
-    angle = math.radians(parameters.elevation_degrees)
+    contact_derived_elevation = math.degrees(
+        math.atan2(-parameters.contact_z, -contact_x)
+    )
+    if parameters.manual_force_elevation_degrees is None:
+        applied_force_elevation = (
+            contact_derived_elevation + parameters.foot_lift_degrees
+        )
+    else:
+        applied_force_elevation = parameters.manual_force_elevation_degrees
+    if not -89 < applied_force_elevation < 89:
+        raise ValueError(
+            "Applied force elevation must remain between -89 and 89 degrees."
+        )
+
+    angle = math.radians(applied_force_elevation)
     impulse = parameters.force_newtons * parameters.contact_time_seconds
     impulse_x = impulse * math.cos(angle)
     impulse_y = 0.0
     impulse_z = impulse * math.sin(angle)
+
+    # The ball begins on the ground. A downward foot impulse is opposed by an
+    # upward ground-reaction impulse, so it cannot launch through the field.
+    ground_reaction_impulse_z = max(0.0, -impulse_z)
+    net_impulse_x = impulse_x
+    net_impulse_y = impulse_y
+    net_impulse_z = impulse_z + ground_reaction_impulse_z
 
     # Angular impulse is r x J.
     angular_x = parameters.contact_y * impulse_z - parameters.contact_z * impulse_y
@@ -124,7 +153,11 @@ def calculate_contact(parameters: ContactParameters) -> ContactResult:
             omega_z / omega_magnitude,
         )
 
-    launch_speed = impulse / parameters.ball_mass
+    net_impulse_magnitude = math.sqrt(
+        net_impulse_x**2 + net_impulse_y**2 + net_impulse_z**2
+    )
+    launch_speed = net_impulse_magnitude / parameters.ball_mass
+    launch_angle = math.degrees(math.atan2(net_impulse_z, net_impulse_x))
     spin_rate_rpm = omega_magnitude * 60 / (2 * math.pi)
     translational_energy = 0.5 * parameters.ball_mass * launch_speed**2
     rotational_energy = 0.5 * moment_of_inertia * omega_magnitude**2
@@ -133,8 +166,14 @@ def calculate_contact(parameters: ContactParameters) -> ContactResult:
         impulse_x,
         impulse_y,
         impulse_z,
+        contact_derived_elevation,
+        applied_force_elevation,
+        ground_reaction_impulse_z,
+        net_impulse_x,
+        net_impulse_y,
+        net_impulse_z,
         launch_speed,
-        parameters.elevation_degrees,
+        launch_angle,
         angular_x,
         angular_y,
         angular_z,
@@ -165,7 +204,7 @@ def calculate_contact_flight(
         aerodynamics = Aerodynamics()
     contact = calculate_contact(parameters)
     flight = simulate_spin(
-        contact.kick(),
+        contact.kick(initial_height=parameters.ball_radius),
         field,
         aerodynamics,
         contact.spin(),
@@ -190,7 +229,13 @@ def contact_summary(result: ContactFlight) -> str:
             ),
             f"Impulse: {math.hypot(contact.impulse_x, contact.impulse_z):.2f} N s",
             (
-                f"Launch: {contact.launch_speed:.2f} m/s at "
+                f"Natural/applied force angle: "
+                f"{contact.contact_derived_elevation_degrees:+.1f} / "
+                f"{contact.applied_force_elevation_degrees:+.1f} deg"
+            ),
+            f"Ground reaction: {contact.ground_reaction_impulse_z:.2f} N s upward",
+            (
+                f"Actual launch: {contact.launch_speed:.2f} m/s at "
                 f"{contact.launch_angle_degrees:.1f} deg"
             ),
             f"Spin: {contact.spin_rate_rpm:.0f} rpm",
@@ -293,12 +338,12 @@ class KickContactSimulator:
             valinit=10,
             valstep=0.5,
         )
-        self.elevation = Slider(
+        self.foot_lift = Slider(
             self.figure.add_axes([0.10, 0.22, 0.22, 0.025], facecolor=slider_color),
-            "Elevation (deg)",
-            0,
-            45,
-            valinit=20,
+            "Foot lift adjust. (deg)",
+            -20,
+            20,
+            valinit=0,
             valstep=0.5,
         )
         self.wall_center = Slider(
@@ -340,7 +385,7 @@ class KickContactSimulator:
         for slider in (
             self.force,
             self.contact_time,
-            self.elevation,
+            self.foot_lift,
             self.wall_center,
             self.magnus,
             self.drag,
@@ -354,7 +399,7 @@ class KickContactSimulator:
         return ContactParameters(
             force_newtons=self.force.val,
             contact_time_seconds=self.contact_time.val / 1000,
-            elevation_degrees=self.elevation.val,
+            foot_lift_degrees=self.foot_lift.val,
             contact_y=self.contact_y,
             contact_z=self.contact_z,
         )
@@ -401,10 +446,12 @@ class KickContactSimulator:
                 label="Spin axis projection",
             )
         axes.annotate(
-            f"Force toward goal (+x)\n{self.elevation.val:.1f} deg upward",
+            (
+                "Force points into this view (+x)\n"
+                f"side-view angle: {self.result.contact.applied_force_elevation_degrees:+.1f} deg"
+            ),
             xy=(self.contact_y, self.contact_z),
             xytext=(0.02, 0.085),
-            arrowprops={"arrowstyle": "->", "color": "tab:red"},
             fontsize=9,
         )
         axes.text(-0.105, 0.095, "upper left", fontsize=8, color="0.35")
@@ -423,7 +470,9 @@ class KickContactSimulator:
         axes = self.flight_axes
         axes.clear()
         flight = self.result.flight
-        kick = self.result.contact.kick()
+        kick = self.result.contact.kick(
+            initial_height=self.result.parameters.ball_radius
+        )
         ideal_x, ideal_z = trajectory(kick, points=250)
         axes.plot(
             ideal_x,

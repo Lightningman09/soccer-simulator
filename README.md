@@ -124,7 +124,7 @@ The separate contact simulator shows how the point where the foot applies force 
 python kick_contact_simulator.py
 ```
 
-Click anywhere on the ball diagram to move the force contact point. Sliders control force magnitude, contact duration, force elevation, drag, Magnus force, and wall position. The simulator calculates:
+Click anywhere on the ball diagram to move the force contact point. Sliders control force magnitude, contact duration, a small foot-lift adjustment, drag, Magnus force, and wall position. The simulator calculates:
 
 - linear impulse and launch velocity;
 - angular impulse from `r x J`;
@@ -132,7 +132,9 @@ Click anywhere on the ball diagram to move the force contact point. Sliders cont
 - translational and rotational kinetic energy; and
 - the resulting Model 3 flight, wall clearance, and goal outcome.
 
-Center contact with a force through the center produces almost no spin. Moving the contact left or right creates sidespin; moving it vertically changes topspin or backspin. PNG and CSV export buttons save the selected experiment in the `outputs` folder.
+The natural force direction is derived from the selected point: contact below center launches upward, center contact launches horizontally, and contact above center directs force downward. Because the ball begins on the field, an upward ground-reaction impulse cancels any downward impulse instead of allowing the ball to pass through the ground. The foot-lift slider adds a small angular adjustment to this natural direction.
+
+Center contact with a force through the center produces almost no spin. Moving the contact left or right creates sidespin; changing the foot-lift adjustment creates additional topspin or backspin. PNG and CSV export buttons save the selected experiment in the `outputs` folder.
 
 This is an impulse model: force and contact duration are user inputs. It does not yet calculate the force from foot speed, ball deformation, or the effective mass of the leg.
 

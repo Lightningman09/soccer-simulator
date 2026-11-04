@@ -54,8 +54,8 @@ def _validate(kick: Kick, field: Field, gravity: float) -> None:
 
     if kick.speed <= 0:
         raise ValueError("Kick speed must be positive.")
-    if not 0 < kick.angle_degrees < 90:
-        raise ValueError("Launch angle must be between 0 and 90 degrees.")
+    if not 0 <= kick.angle_degrees < 90:
+        raise ValueError("Launch angle must be at least 0 and below 90 degrees.")
     if gravity <= 0:
         raise ValueError("Gravity must be positive.")
     if field.wall_distance <= 0 or field.goal_distance <= 0:

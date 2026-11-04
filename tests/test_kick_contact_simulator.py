@@ -1,5 +1,4 @@
 import csv
-import math
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,7 +17,6 @@ class ContactMechanicsTests(unittest.TestCase):
         parameters = ContactParameters(
             force_newtons=860,
             contact_time_seconds=0.01,
-            elevation_degrees=0,
             contact_y=0,
             contact_z=0,
         )
@@ -32,27 +30,43 @@ class ContactMechanicsTests(unittest.TestCase):
         self.assertAlmostEqual(result.launch_speed, 10 / parameters.ball_mass)
 
     def test_right_side_contact_produces_negative_vertical_spin(self):
-        right = calculate_contact(
-            ContactParameters(elevation_degrees=0, contact_y=0.03, contact_z=0)
-        )
-        left = calculate_contact(
-            ContactParameters(elevation_degrees=0, contact_y=-0.03, contact_z=0)
-        )
+        right = calculate_contact(ContactParameters(contact_y=0.03, contact_z=0))
+        left = calculate_contact(ContactParameters(contact_y=-0.03, contact_z=0))
         self.assertLess(right.omega_z, 0)
         self.assertGreater(left.omega_z, 0)
         self.assertAlmostEqual(right.omega_z, -left.omega_z)
 
     def test_force_line_through_center_produces_negligible_spin(self):
-        radius = 0.11
-        elevation = 20.0
-        contact_z = -radius * math.sin(math.radians(elevation))
-        parameters = ContactParameters(
-            elevation_degrees=elevation,
-            contact_y=0,
-            contact_z=contact_z,
-        )
+        parameters = ContactParameters(contact_y=0, contact_z=-0.04)
         result = calculate_contact(parameters)
         self.assertAlmostEqual(result.spin_rate_rpm, 0.0, places=8)
+
+    def test_high_contact_does_not_create_an_upward_launch(self):
+        result = calculate_contact(ContactParameters(contact_y=-0.048, contact_z=0.082))
+        self.assertLess(result.applied_force_elevation_degrees, 0)
+        self.assertGreater(result.ground_reaction_impulse_z, 0)
+        self.assertEqual(result.launch_angle_degrees, 0)
+
+    def test_below_center_contact_creates_an_upward_launch(self):
+        result = calculate_contact(ContactParameters(contact_y=0, contact_z=-0.04))
+        self.assertGreater(result.applied_force_elevation_degrees, 0)
+        self.assertAlmostEqual(result.ground_reaction_impulse_z, 0)
+        self.assertGreater(result.launch_angle_degrees, 0)
+
+    def test_foot_lift_adjustment_changes_force_angle_and_adds_spin(self):
+        natural = calculate_contact(ContactParameters(contact_y=0, contact_z=-0.04))
+        adjusted = calculate_contact(
+            ContactParameters(
+                contact_y=0,
+                contact_z=-0.04,
+                foot_lift_degrees=10,
+            )
+        )
+        self.assertAlmostEqual(
+            adjusted.applied_force_elevation_degrees,
+            natural.applied_force_elevation_degrees + 10,
+        )
+        self.assertGreater(adjusted.spin_rate_rpm, natural.spin_rate_rpm)
 
     def test_contact_outside_ball_is_rejected(self):
         with self.assertRaises(ValueError):
