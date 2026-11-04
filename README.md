@@ -97,6 +97,25 @@ This verified example bends a lower kick around the left edge of an offset wall 
 python spin_simulation.py --speed 20 --angle 20 --spin-rpm -600 --wall-center 1.5
 ```
 
+## Interactive simulator
+
+Open the complete control panel with:
+
+```powershell
+python interactive_simulator.py
+```
+
+The interface provides:
+
+- live 3D ideal, drag, and drag-plus-spin trajectories;
+- model and spin-axis selectors;
+- sliders for speed, angle, spin rate, drag, Magnus force, wall geometry, and goal distance;
+- immediate wall-clearance and goal outcomes;
+- a three-model measurement comparison; and
+- buttons to save a PNG graph or export the current results to CSV.
+
+Saved files are placed in the `outputs` folder. The starting controls reproduce the verified curved-goal example.
+
 Adjust the geometry:
 
 ```powershell
@@ -118,7 +137,7 @@ python spin_simulation.py --plot
 python -m unittest discover -s tests -v
 ```
 
-The tests verify the analytical baseline values, wall and goal decisions, drag behavior, Magnus-force direction, reversed-spin symmetry, zero-spin agreement with Model 2, and three-dimensional wall and goal geometry.
+The tests verify the analytical baseline values, wall and goal decisions, drag behavior, Magnus-force direction, reversed-spin symmetry, zero-spin agreement with Model 2, three-dimensional wall and goal geometry, comparison data, and CSV export.
 
 ## Example results
 
@@ -133,4 +152,5 @@ The tests verify the analytical baseline values, wall and goal decisions, drag b
 1. Ideal projectile motion — complete.
 2. Aerodynamic drag — complete.
 3. Drag plus ball spin and the Magnus force — complete.
-4. Adjustable controls, experiments, validation, and final presentation material — next.
+4. Adjustable interactive controls — complete.
+5. Controlled experiments, validation, and final presentation material — next.
