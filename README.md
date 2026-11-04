@@ -116,6 +116,26 @@ The interface provides:
 
 Saved files are placed in the `outputs` folder. The starting controls reproduce the verified curved-goal example.
 
+## Kick contact simulator
+
+The separate contact simulator shows how the point where the foot applies force changes the ball's speed and spin:
+
+```powershell
+python kick_contact_simulator.py
+```
+
+Click anywhere on the ball diagram to move the force contact point. Sliders control force magnitude, contact duration, force elevation, drag, Magnus force, and wall position. The simulator calculates:
+
+- linear impulse and launch velocity;
+- angular impulse from `r x J`;
+- spin rate and three-dimensional spin axis;
+- translational and rotational kinetic energy; and
+- the resulting Model 3 flight, wall clearance, and goal outcome.
+
+Center contact with a force through the center produces almost no spin. Moving the contact left or right creates sidespin; moving it vertically changes topspin or backspin. PNG and CSV export buttons save the selected experiment in the `outputs` folder.
+
+This is an impulse model: force and contact duration are user inputs. It does not yet calculate the force from foot speed, ball deformation, or the effective mass of the leg.
+
 Adjust the geometry:
 
 ```powershell
@@ -137,7 +157,7 @@ python spin_simulation.py --plot
 python -m unittest discover -s tests -v
 ```
 
-The tests verify the analytical baseline values, wall and goal decisions, drag behavior, Magnus-force direction, reversed-spin symmetry, zero-spin agreement with Model 2, three-dimensional wall and goal geometry, comparison data, and CSV export.
+The tests verify the analytical baseline values, wall and goal decisions, drag behavior, Magnus-force direction, reversed-spin symmetry, zero-spin agreement with Model 2, three-dimensional wall and goal geometry, contact impulse and torque, comparison data, and CSV export.
 
 ## Example results
 
@@ -153,4 +173,5 @@ The tests verify the analytical baseline values, wall and goal decisions, drag b
 2. Aerodynamic drag — complete.
 3. Drag plus ball spin and the Magnus force — complete.
 4. Adjustable interactive controls — complete.
-5. Controlled experiments, validation, and final presentation material — next.
+5. Kick contact and force-location simulator — complete.
+6. Controlled experiments, validation, and final presentation material — next.
