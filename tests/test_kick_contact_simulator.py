@@ -9,6 +9,7 @@ from kick_contact_simulator import (
     calculate_contact_flight,
     contact_summary,
     export_contact_csv,
+    outcome_banner,
 )
 
 
@@ -107,6 +108,22 @@ class ContactFlightTests(unittest.TestCase):
         assert result.ground is not None
         self.assertTrue(result.ground.hit_wall)
         self.assertIn("wall", result.final_outcome)
+
+    def test_outcome_banner_summarizes_goal_wall_and_crossbar_miss(self):
+        goal_text, _ = outcome_banner(self.result)
+        self.assertEqual(goal_text, "GOAL")
+
+        wall_result = calculate_contact_flight(
+            ContactParameters(contact_y=-0.058, contact_z=0.060)
+        )
+        wall_text, _ = outcome_banner(wall_result)
+        self.assertEqual(wall_text, "HIT WALL")
+
+        high_result = calculate_contact_flight(
+            ContactParameters(contact_y=0.037, contact_z=-0.053)
+        )
+        high_text, _ = outcome_banner(high_result)
+        self.assertEqual(high_text, "MISS — OVER CROSSBAR")
 
 
 if __name__ == "__main__":

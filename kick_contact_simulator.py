@@ -307,6 +307,31 @@ def contact_summary(result: ContactFlight) -> str:
     )
 
 
+def outcome_banner(result: ContactFlight) -> tuple[str, str]:
+    """Return a short outcome label and an accessible display color."""
+
+    outcome = result.final_outcome.lower()
+    scores = (
+        result.ground.scores if result.ground is not None else result.flight.shot.scores
+    )
+    hit_wall = (
+        result.ground.hit_wall
+        if result.ground is not None
+        else result.flight.shot.reaches_wall and not result.flight.shot.avoids_wall
+    )
+    if scores:
+        return "GOAL", "#17823b"
+    if hit_wall:
+        return "HIT WALL", "#b42318"
+    if "crossbar" in outcome:
+        return "MISS — OVER CROSSBAR", "#d65f00"
+    if "goalpost" in outcome or "outside" in outcome:
+        return "MISS — WIDE", "#d65f00"
+    if "stop" in outcome:
+        return "STOPPED ON FIELD", "#2463a6"
+    return "SHOT RESULT", "#4b5563"
+
+
 def export_contact_csv(result: ContactFlight, path: str | Path) -> Path:
     """Export contact inputs, calculated initial conditions, and outcome."""
 
@@ -350,11 +375,13 @@ class KickContactSimulator:
     def __init__(self) -> None:
         import matplotlib.pyplot as plt
         import numpy as np
+        from matplotlib.lines import Line2D
         from matplotlib.patches import Circle
         from matplotlib.widgets import Button, Slider
 
         self.plt = plt
         self.Circle = Circle
+        self.Line2D = Line2D
         self.np = np
         self.figure = plt.figure(figsize=(15, 9))
         self.figure.canvas.manager.set_window_title("PHY 221 Kick Contact Simulator")
@@ -363,7 +390,17 @@ class KickContactSimulator:
             [0.36, 0.37, 0.36, 0.58], projection="3d"
         )
         self.result_text = self.figure.text(
-            0.75, 0.91, "", va="top", family="monospace", fontsize=9, wrap=True
+            0.75, 0.86, "", va="top", family="monospace", fontsize=9, wrap=True
+        )
+        self.outcome_text = self.figure.text(
+            0.86,
+            0.945,
+            "",
+            ha="center",
+            va="center",
+            color="white",
+            fontsize=14,
+            fontweight="bold",
         )
         self.status_text = self.figure.text(
             0.75, 0.04, "", fontsize=9, color="tab:blue"
@@ -513,27 +550,89 @@ class KickContactSimulator:
             zorder=4,
             label="Force contact",
         )
-        omega_y = self.result.contact.spin_axis_y
-        omega_z = self.result.contact.spin_axis_z
-        if math.hypot(omega_y, omega_z) > 0.02:
-            axes.arrow(
-                0,
-                0,
-                omega_y * radius * 0.75,
-                omega_z * radius * 0.75,
-                width=0.0015,
-                color="tab:purple",
-                length_includes_head=True,
-                label="Spin axis projection",
-            )
+        contact = self.result.contact
+        force_angle = math.radians(contact.applied_force_elevation_degrees)
+        force_vertical = 0.075 * math.sin(force_angle)
         axes.annotate(
+            "",
+            xy=(self.contact_y, self.contact_z + force_vertical),
+            xytext=(self.contact_y, self.contact_z),
+            arrowprops={"arrowstyle": "-|>", "color": "tab:red", "lw": 2.2},
+            zorder=5,
+        )
+        force_label_z = self.contact_z + force_vertical / 2
+        axes.text(
+            self.contact_y + 0.008,
+            force_label_z,
+            "Applied force",
+            color="tab:red",
+            fontsize=8,
+            fontweight="bold",
+            bbox={"facecolor": "white", "edgecolor": "tab:red", "alpha": 0.85},
+            zorder=6,
+        )
+
+        launch_angle = math.radians(contact.launch_angle_degrees)
+        launch_vertical = 0.080 * math.sin(launch_angle)
+        axes.annotate(
+            "",
+            xy=(0.0, launch_vertical),
+            xytext=(0.0, 0.0),
+            arrowprops={"arrowstyle": "-|>", "color": "#1155cc", "lw": 2.2},
+            zorder=5,
+        )
+        axes.text(
+            0.007,
+            max(0.012, launch_vertical * 0.65),
+            "Launch velocity",
+            color="#1155cc",
+            fontsize=8,
+            fontweight="bold",
+            bbox={"facecolor": "white", "edgecolor": "#1155cc", "alpha": 0.85},
+            zorder=6,
+        )
+
+        if abs(contact.omega_x) > 1e-6:
+            if contact.omega_x > 0:
+                spin_start, spin_end, curve = (-0.025, -0.035), (-0.025, 0.050), -0.65
+            else:
+                spin_start, spin_end, curve = (-0.025, 0.050), (-0.025, -0.035), 0.65
+            axes.annotate(
+                "",
+                xy=spin_end,
+                xytext=spin_start,
+                arrowprops={
+                    "arrowstyle": "-|>",
+                    "color": "tab:purple",
+                    "lw": 2.2,
+                    "connectionstyle": f"arc3,rad={curve}",
+                },
+                zorder=5,
+            )
+            axes.text(
+                -0.067,
+                0.005,
+                "Spin",
+                color="tab:purple",
+                fontsize=8,
+                fontweight="bold",
+                bbox={
+                    "facecolor": "white",
+                    "edgecolor": "tab:purple",
+                    "alpha": 0.85,
+                },
+                zorder=6,
+            )
+        axes.text(
+            0.0,
+            radius * 1.18,
             (
-                "Force points into this view (+x)\n"
-                f"side-view angle: {self.result.contact.applied_force_elevation_degrees:+.1f} deg"
+                "Vertical projections; motion also points into view (+x); "
+                f"vertical angle {contact.applied_force_elevation_degrees:+.1f}°"
             ),
-            xy=(self.contact_y, self.contact_z),
-            xytext=(0.02, 0.085),
-            fontsize=9,
+            fontsize=7.5,
+            ha="center",
+            va="top",
         )
         axes.text(-0.105, 0.095, "upper left", fontsize=8, color="0.35")
         axes.text(0.045, 0.095, "upper right", fontsize=8, color="0.35")
@@ -562,16 +661,41 @@ class KickContactSimulator:
             linestyle="--",
             label="No aerodynamics",
         )
-        axes.plot(flight.x, flight.y, flight.z, label="Contact-derived flight")
+        axes.plot(flight.x, flight.y, flight.z, label="Flight")
+        phase_colors = {
+            "bounce": "tab:purple",
+            "sliding": "tab:red",
+            "rolling": "tab:brown",
+        }
+        phase_labels = {
+            "bounce": "Bounce",
+            "sliding": "Slide",
+            "rolling": "Roll",
+        }
         if self.result.ground is not None:
-            axes.plot(
-                self.result.ground.x,
-                self.result.ground.y,
-                self.result.ground.z,
-                color="tab:brown",
-                linewidth=2.5,
-                label="Bounce / slide / roll",
-            )
+            ground = self.result.ground
+            plotted_phases: set[str] = set()
+            segment_start = 0
+            for index in range(1, len(ground.phases) + 1):
+                segment_finished = (
+                    index == len(ground.phases)
+                    or ground.phases[index] != ground.phases[segment_start]
+                )
+                if not segment_finished:
+                    continue
+                phase = ground.phases[segment_start]
+                start = max(0, segment_start - 1)
+                stop = index
+                axes.plot(
+                    ground.x[start:stop],
+                    ground.y[start:stop],
+                    ground.z[start:stop],
+                    color=phase_colors[phase],
+                    linewidth=2.5,
+                    label=phase_labels[phase] if phase not in plotted_phases else None,
+                )
+                plotted_phases.add(phase)
+                segment_start = index
 
         wall_left = self.field.wall_center - self.field.wall_width / 2
         wall_right = self.field.wall_center + self.field.wall_width / 2
@@ -622,12 +746,33 @@ class KickContactSimulator:
         axes.set_ylabel("Sideways, y (m)")
         axes.set_zlabel("Height, z (m)")
         axes.set_title("Predicted Flight from This Contact")
-        axes.legend(loc="upper right")
+        handles, labels = axes.get_legend_handles_labels()
+        phase_key = [
+            self.Line2D([0], [0], color="tab:orange", lw=2, label="Flight"),
+            self.Line2D([0], [0], color="tab:purple", lw=2, label="Bounce"),
+            self.Line2D([0], [0], color="tab:red", lw=2, label="Slide"),
+            self.Line2D([0], [0], color="tab:brown", lw=2, label="Roll"),
+        ]
+        existing_labels = set(labels)
+        for phase_handle in phase_key:
+            if phase_handle.get_label() not in existing_labels:
+                handles.append(phase_handle)
+                labels.append(phase_handle.get_label())
+        axes.legend(handles, labels, loc="upper right", fontsize=8)
 
     def _draw(self) -> None:
         self._draw_contact()
         self._draw_flight()
         self.result_text.set_text(contact_summary(self.result))
+        banner_text, banner_color = outcome_banner(self.result)
+        self.outcome_text.set_text(banner_text)
+        self.outcome_text.set_bbox(
+            {
+                "boxstyle": "round,pad=0.55",
+                "facecolor": banner_color,
+                "edgecolor": banner_color,
+            }
+        )
         self.figure.canvas.draw_idle()
 
     def _select_contact(self, event: object) -> None:
