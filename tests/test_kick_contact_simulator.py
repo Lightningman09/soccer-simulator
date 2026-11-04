@@ -9,7 +9,7 @@ from kick_contact_simulator import (
     calculate_contact_flight,
     contact_summary,
     export_contact_csv,
-    outcome_banner,
+    export_math_report,
 )
 
 
@@ -109,21 +109,18 @@ class ContactFlightTests(unittest.TestCase):
         self.assertTrue(result.ground.hit_wall)
         self.assertIn("wall", result.final_outcome)
 
-    def test_outcome_banner_summarizes_goal_wall_and_crossbar_miss(self):
-        goal_text, _ = outcome_banner(self.result)
-        self.assertEqual(goal_text, "GOAL")
-
-        wall_result = calculate_contact_flight(
-            ContactParameters(contact_y=-0.058, contact_z=0.060)
-        )
-        wall_text, _ = outcome_banner(wall_result)
-        self.assertEqual(wall_text, "HIT WALL")
-
-        high_result = calculate_contact_flight(
-            ContactParameters(contact_y=0.037, contact_z=-0.053)
-        )
-        high_text, _ = outcome_banner(high_result)
-        self.assertEqual(high_text, "MISS — OVER CROSSBAR")
+    def test_math_export_contains_equations_values_and_outcome(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            destination = Path(temporary_directory) / "calculations.txt"
+            export_math_report(self.result, destination)
+            report = destination.read_text(encoding="utf-8")
+        self.assertIn("J = F dt", report)
+        self.assertIn("L = r x J_foot", report)
+        self.assertIn("F_drag", report)
+        self.assertIn("F_Magnus", report)
+        self.assertIn("Sliding friction", report)
+        self.assertIn(f"{self.result.contact.launch_speed:.6f}", report)
+        self.assertIn(self.result.final_outcome, report)
 
 
 if __name__ == "__main__":

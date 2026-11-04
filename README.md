@@ -136,11 +136,11 @@ The natural force direction is derived from the selected point: contact below ce
 
 When the ball returns to the grass, the simulation continues through bouncing, sliding, rolling without slipping, and finally stopping or reaching an obstacle. Sliding friction is based on the bottom point's velocity relative to the grass, so the kick force affects rolling indirectly through the ball's initial speed and spin. The interface includes controls for kinetic sliding friction, rolling resistance, and bounce restitution.
 
-The contact view labels the applied-force, launch-velocity, and spin indicators. A color-coded banner gives the result at a glance, while the trajectory legend distinguishes flight, bounce, slide, and roll phases.
+The contact view labels the applied-force, launch-velocity, and spin indicators, while the trajectory legend distinguishes flight, bounce, slide, and roll phases.
 
 The sliding force has magnitude `F_f = mu_k m g` and points opposite the slip velocity at the bottom of the ball. Its torque changes the spin until the rolling condition `v = omega R` is reached. Rolling resistance then slows the ball with `a = mu_r g`. Bounce height uses the coefficient of restitution. This is a useful introductory rigid-ball model; it does not attempt to model grass deformation, a finite bounce-contact interval, or speed-dependent turf behavior.
 
-Center contact with a force through the center produces almost no spin. Moving the contact left or right creates sidespin; changing the foot-lift adjustment creates additional topspin or backspin. PNG and CSV export buttons save the selected experiment in the `outputs` folder.
+Center contact with a force through the center produces almost no spin. Moving the contact left or right creates sidespin; changing the foot-lift adjustment creates additional topspin or backspin. The export buttons save a PNG graph, CSV data, or a human-readable text report containing the equations, substituted values, and calculated results in the `outputs` folder.
 
 This is an impulse model: force and contact duration are user inputs. It does not yet calculate the force from foot speed, ball deformation, or the effective mass of the leg.
 

@@ -307,29 +307,203 @@ def contact_summary(result: ContactFlight) -> str:
     )
 
 
-def outcome_banner(result: ContactFlight) -> tuple[str, str]:
-    """Return a short outcome label and an accessible display color."""
+def math_report(
+    result: ContactFlight,
+    field: Field | None = None,
+    aerodynamics: Aerodynamics | None = None,
+    magnus_coefficient: float = 0.25,
+    ground_parameters: GroundParameters | None = None,
+    gravity: float = 9.81,
+) -> str:
+    """Build a readable report with equations and substituted values."""
 
-    outcome = result.final_outcome.lower()
-    scores = (
-        result.ground.scores if result.ground is not None else result.flight.shot.scores
+    if field is None:
+        field = Field(wall_center=1.5)
+    if aerodynamics is None:
+        aerodynamics = Aerodynamics()
+    if ground_parameters is None:
+        ground_parameters = GroundParameters()
+
+    parameters = result.parameters
+    contact = result.contact
+    radius = parameters.ball_radius
+    mass = parameters.ball_mass
+    impulse = parameters.force_newtons * parameters.contact_time_seconds
+    inertia = 2.0 / 3.0 * mass * radius**2
+    initial_vx = contact.net_impulse_x / mass
+    initial_vy = contact.net_impulse_y / mass
+    initial_vz = contact.net_impulse_z / mass
+    speed = contact.launch_speed
+    area = math.pi * radius**2
+    gravity_force = mass * gravity
+
+    drag_scale = 0.5 * aerodynamics.air_density * aerodynamics.drag_coefficient * area
+    drag_x = -drag_scale * speed * initial_vx
+    drag_y = -drag_scale * speed * initial_vy
+    drag_z = -drag_scale * speed * initial_vz
+
+    cross_x = contact.omega_y * initial_vz - contact.omega_z * initial_vy
+    cross_y = contact.omega_z * initial_vx - contact.omega_x * initial_vz
+    cross_z = contact.omega_x * initial_vy - contact.omega_y * initial_vx
+    magnus_scale = 0.5 * aerodynamics.air_density * magnus_coefficient * area * radius
+    magnus_x = magnus_scale * cross_x
+    magnus_y = magnus_scale * cross_y
+    magnus_z = magnus_scale * cross_z
+
+    sliding_force = ground_parameters.kinetic_friction * mass * gravity
+    sliding_acceleration = ground_parameters.kinetic_friction * gravity
+    rolling_force = ground_parameters.rolling_resistance * mass * gravity
+    rolling_acceleration = ground_parameters.rolling_resistance * gravity
+
+    report = [
+        "PHY 221 SOCCER KICK CALCULATION REPORT",
+        "======================================",
+        "",
+        "INPUTS",
+        f"Applied force F                 = {parameters.force_newtons:.3f} N",
+        (f"Contact time dt                = {parameters.contact_time_seconds:.6f} s"),
+        f"Ball mass m                     = {mass:.4f} kg",
+        f"Ball radius R                   = {radius:.4f} m",
+        (
+            f"Contact y, z                    = ({parameters.contact_y:+.5f}, "
+            f"{parameters.contact_z:+.5f}) m"
+        ),
+        f"Gravity g                       = {gravity:.3f} m/s^2",
+        f"Air density rho                 = {aerodynamics.air_density:.4f} kg/m^3",
+        f"Drag coefficient Cd             = {aerodynamics.drag_coefficient:.4f}",
+        f"Magnus coefficient Cm           = {magnus_coefficient:.4f}",
+        f"Sliding friction coefficient    = {ground_parameters.kinetic_friction:.4f}",
+        f"Rolling resistance coefficient  = {ground_parameters.rolling_resistance:.4f}",
+        f"Bounce restitution e            = {ground_parameters.restitution:.4f}",
+        "",
+        "1. CONTACT GEOMETRY AND FORCE DIRECTION",
+        "x_contact = -sqrt(R^2 - y^2 - z^2)",
+        (
+            f"          = -sqrt({radius:.4f}^2 - "
+            f"({parameters.contact_y:+.5f})^2 - "
+            f"({parameters.contact_z:+.5f})^2)"
+        ),
+        f"          = {contact.contact_x:+.6f} m",
+        "theta_natural = atan2(-z, -x_contact)",
+        f"              = {contact.contact_derived_elevation_degrees:+.3f} deg",
+        "theta_applied = theta_natural + foot-lift adjustment",
+        f"              = {contact.applied_force_elevation_degrees:+.3f} deg",
+        "",
+        "2. LINEAR IMPULSE AND LAUNCH",
+        "J = F dt",
+        (
+            f"  = ({parameters.force_newtons:.3f} N)"
+            f"({parameters.contact_time_seconds:.6f} s) = {impulse:.6f} N s"
+        ),
+        "Jx = J cos(theta), Jy = 0, Jz = J sin(theta)",
+        (
+            f"J_foot = ({contact.impulse_x:+.6f}, {contact.impulse_y:+.6f}, "
+            f"{contact.impulse_z:+.6f}) N s"
+        ),
+        "J_ground,z = max(0, -Jz)",
+        f"J_ground,z = {contact.ground_reaction_impulse_z:.6f} N s",
+        "v0 = J_net / m",
+        (f"v0 = ({initial_vx:+.6f}, {initial_vy:+.6f}, {initial_vz:+.6f}) m/s"),
+        "|v0| = sqrt(vx^2 + vy^2 + vz^2)",
+        f"|v0| = {contact.launch_speed:.6f} m/s",
+        "launch angle = atan2(vz, vx)",
+        f"launch angle = {contact.launch_angle_degrees:.6f} deg",
+        "",
+        "3. ANGULAR IMPULSE AND SPIN",
+        "L = r x J_foot",
+        (
+            f"L = ({contact.angular_impulse_x:+.6f}, "
+            f"{contact.angular_impulse_y:+.6f}, "
+            f"{contact.angular_impulse_z:+.6f}) N m s"
+        ),
+        "I = (2/3) m R^2",
+        (f"I = (2/3)({mass:.4f})({radius:.4f}^2) = {inertia:.8f} kg m^2"),
+        "omega = L / I",
+        (
+            f"omega = ({contact.omega_x:+.6f}, {contact.omega_y:+.6f}, "
+            f"{contact.omega_z:+.6f}) rad/s"
+        ),
+        "rpm = |omega| 60 / (2 pi)",
+        f"rpm = {contact.spin_rate_rpm:.3f}",
+        "",
+        "4. ENERGY",
+        "K_translation = (1/2) m |v0|^2",
+        f"K_translation = {contact.translational_energy:.6f} J",
+        "K_rotation = (1/2) I |omega|^2",
+        f"K_rotation = {contact.rotational_energy:.6f} J",
+        "",
+        "5. INITIAL FLIGHT FORCES",
+        f"Cross-sectional area A = pi R^2 = {area:.8f} m^2",
+        "Weight = m g",
+        f"Weight magnitude = {gravity_force:.6f} N downward",
+        "F_drag = -(1/2) rho Cd A |v| v",
+        f"F_drag(0) = ({drag_x:+.6f}, {drag_y:+.6f}, {drag_z:+.6f}) N",
+        "F_Magnus = (1/2) rho Cm A R (omega x v)",
+        (f"F_Magnus(0) = ({magnus_x:+.6f}, {magnus_y:+.6f}, {magnus_z:+.6f}) N"),
+        (
+            "The flight is advanced numerically because drag and Magnus force "
+            "change with velocity."
+        ),
+        "",
+        "6. GROUND MOTION",
+        "Sliding friction magnitude Ff = mu_k m g",
+        f"Ff = {sliding_force:.6f} N; corresponding mu_k g = {sliding_acceleration:.6f} m/s^2",
+        "Bottom-point slip: ux = vx - R omega_y, uy = vy + R omega_x",
+        "Rolling begins when the bottom-point slip is nearly zero: v = omega R",
+        "Rolling resistance magnitude Fr = mu_r m g",
+        f"Fr = {rolling_force:.6f} N; corresponding mu_r g = {rolling_acceleration:.6f} m/s^2",
+        "Bounce vertical speed: vz_after = -e vz_before",
+        "",
+        "7. SIMULATION RESULT",
+        f"Wall plane x                   = {field.wall_distance:.3f} m",
+        f"Goal plane x                   = {field.goal_distance:.3f} m",
+        (
+            f"Ball center at wall y, z       = ({result.flight.shot.wall_lateral:+.4f}, "
+            f"{result.flight.shot.wall_height:+.4f}) m"
+        ),
+        (
+            f"Ball center at goal y, z       = ({result.flight.shot.goal_lateral:+.4f}, "
+            f"{result.flight.shot.goal_height:+.4f}) m"
+        ),
+        f"Maximum airborne height        = {result.flight.maximum_height:.4f} m",
+    ]
+    if result.ground is not None:
+        report.extend(
+            [
+                f"Ground path distance            = {result.ground.path_distance:.4f} m",
+                f"Ground-motion duration          = {result.ground.times[-1]:.4f} s",
+                f"Ground phases                   = {', '.join(dict.fromkeys(result.ground.phases))}",
+            ]
+        )
+    else:
+        report.append("Ground motion                   = not reached before the result")
+    report.extend([f"Outcome                         = {result.final_outcome}", ""])
+    return "\n".join(report)
+
+
+def export_math_report(
+    result: ContactFlight,
+    path: str | Path,
+    field: Field | None = None,
+    aerodynamics: Aerodynamics | None = None,
+    magnus_coefficient: float = 0.25,
+    ground_parameters: GroundParameters | None = None,
+) -> Path:
+    """Write the equations, substituted values, and results to a text file."""
+
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        math_report(
+            result,
+            field,
+            aerodynamics,
+            magnus_coefficient,
+            ground_parameters,
+        ),
+        encoding="utf-8",
     )
-    hit_wall = (
-        result.ground.hit_wall
-        if result.ground is not None
-        else result.flight.shot.reaches_wall and not result.flight.shot.avoids_wall
-    )
-    if scores:
-        return "GOAL", "#17823b"
-    if hit_wall:
-        return "HIT WALL", "#b42318"
-    if "crossbar" in outcome:
-        return "MISS — OVER CROSSBAR", "#d65f00"
-    if "goalpost" in outcome or "outside" in outcome:
-        return "MISS — WIDE", "#d65f00"
-    if "stop" in outcome:
-        return "STOPPED ON FIELD", "#2463a6"
-    return "SHOT RESULT", "#4b5563"
+    return destination
 
 
 def export_contact_csv(result: ContactFlight, path: str | Path) -> Path:
@@ -390,17 +564,7 @@ class KickContactSimulator:
             [0.36, 0.37, 0.36, 0.58], projection="3d"
         )
         self.result_text = self.figure.text(
-            0.75, 0.86, "", va="top", family="monospace", fontsize=9, wrap=True
-        )
-        self.outcome_text = self.figure.text(
-            0.86,
-            0.945,
-            "",
-            ha="center",
-            va="center",
-            color="white",
-            fontsize=14,
-            fontweight="bold",
+            0.75, 0.92, "", va="top", family="monospace", fontsize=9, wrap=True
         )
         self.status_text = self.figure.text(
             0.75, 0.04, "", fontsize=9, color="tab:blue"
@@ -480,10 +644,13 @@ class KickContactSimulator:
             valstep=0.05,
         )
         self.save_graph_button = Button(
-            self.figure.add_axes([0.75, 0.12, 0.10, 0.045]), "Save graph"
+            self.figure.add_axes([0.74, 0.12, 0.075, 0.045]), "Save graph"
         )
         self.save_csv_button = Button(
-            self.figure.add_axes([0.87, 0.12, 0.10, 0.045]), "Export CSV"
+            self.figure.add_axes([0.825, 0.12, 0.075, 0.045]), "Export CSV"
+        )
+        self.save_math_button = Button(
+            self.figure.add_axes([0.91, 0.12, 0.075, 0.045]), "Export math"
         )
 
         self.contact_y = 0.030
@@ -505,6 +672,7 @@ class KickContactSimulator:
             slider.on_changed(self._update)
         self.save_graph_button.on_clicked(self._save_graph)
         self.save_csv_button.on_clicked(self._save_csv)
+        self.save_math_button.on_clicked(self._save_math)
         self._draw()
 
     def _parameters(self) -> ContactParameters:
@@ -518,8 +686,8 @@ class KickContactSimulator:
 
     def _calculate(self) -> ContactFlight:
         self.field = Field(wall_center=self.wall_center.val)
-        aerodynamics = Aerodynamics(drag_coefficient=self.drag.val)
-        ground_parameters = GroundParameters(
+        self.aerodynamics = Aerodynamics(drag_coefficient=self.drag.val)
+        self.ground_parameters = GroundParameters(
             kinetic_friction=self.kinetic_friction.val,
             rolling_resistance=self.rolling_resistance.val,
             restitution=self.restitution.val,
@@ -527,9 +695,9 @@ class KickContactSimulator:
         return calculate_contact_flight(
             self._parameters(),
             self.field,
-            aerodynamics,
+            self.aerodynamics,
             self.magnus.val,
-            ground_parameters,
+            self.ground_parameters,
         )
 
     def _draw_contact(self) -> None:
@@ -764,15 +932,6 @@ class KickContactSimulator:
         self._draw_contact()
         self._draw_flight()
         self.result_text.set_text(contact_summary(self.result))
-        banner_text, banner_color = outcome_banner(self.result)
-        self.outcome_text.set_text(banner_text)
-        self.outcome_text.set_bbox(
-            {
-                "boxstyle": "round,pad=0.55",
-                "facecolor": banner_color,
-                "edgecolor": banner_color,
-            }
-        )
         self.figure.canvas.draw_idle()
 
     def _select_contact(self, event: object) -> None:
@@ -814,6 +973,18 @@ class KickContactSimulator:
     def _save_csv(self, _event: object) -> None:
         destination = export_contact_csv(self.result, self._output_path("csv"))
         self.status_text.set_text(f"Saved {destination}")
+        self.figure.canvas.draw_idle()
+
+    def _save_math(self, _event: object) -> None:
+        destination = export_math_report(
+            self.result,
+            self._output_path("txt"),
+            self.field,
+            self.aerodynamics,
+            self.magnus.val,
+            self.ground_parameters,
+        )
+        self.status_text.set_text(f"Saved calculations to {destination}")
         self.figure.canvas.draw_idle()
 
     def show(self) -> None:
