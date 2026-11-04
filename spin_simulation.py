@@ -263,6 +263,7 @@ def simulate_spin(
     magnus_coefficient: float = 0.25,
     gravity: float = 9.81,
     time_step: float = 0.001,
+    ground_height: float = 0.0,
 ) -> SpinSimulation:
     """Numerically integrate 3D motion with drag and the Magnus force."""
 
@@ -274,6 +275,10 @@ def simulate_spin(
         spin = Spin()
     evaluate_shot(kick, field, gravity)
     _validate_inputs(field, aerodynamics, spin, magnus_coefficient, time_step)
+    if ground_height < 0:
+        raise ValueError("Ground height cannot be negative.")
+    if kick.initial_height < ground_height:
+        raise ValueError("Initial ball height cannot be below the ground height.")
 
     theta = math.radians(kick.angle_degrees)
     t = 0.0
@@ -291,6 +296,32 @@ def simulate_spin(
     vx_values = [vx]
     vy_values = [vy]
     vz_values = [vz]
+
+    if z <= ground_height and vz <= 0:
+        shot = judge_spin_shot(
+            kick,
+            field,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            reaches_wall=False,
+            reaches_goal=False,
+        )
+        return SpinSimulation(
+            tuple(times),
+            tuple(x_values),
+            tuple(y_values),
+            tuple(z_values),
+            tuple(vx_values),
+            tuple(vy_values),
+            tuple(vz_values),
+            0.0,
+            0.0,
+            z,
+            0.0,
+            shot,
+        )
 
     maximum_steps = math.ceil(60.0 / time_step)
     for _ in range(maximum_steps):
@@ -312,12 +343,12 @@ def simulate_spin(
         next_z = z + next_vz * time_step
         next_t = t + time_step
 
-        if next_z < 0 and next_t > time_step:
-            fraction = z / (z - next_z)
+        if next_z < ground_height:
+            fraction = (z - ground_height) / (z - next_z)
             times.append(t + fraction * time_step)
             x_values.append(x + fraction * (next_x - x))
             y_values.append(y + fraction * (next_y - y))
-            z_values.append(0.0)
+            z_values.append(ground_height)
             vx_values.append(vx + fraction * (next_vx - vx))
             vy_values.append(vy + fraction * (next_vy - vy))
             vz_values.append(vz + fraction * (next_vz - vz))

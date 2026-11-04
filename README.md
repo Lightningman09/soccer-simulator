@@ -134,6 +134,10 @@ Click anywhere on the ball diagram to move the force contact point. Sliders cont
 
 The natural force direction is derived from the selected point: contact below center launches upward, center contact launches horizontally, and contact above center directs force downward. Because the ball begins on the field, an upward ground-reaction impulse cancels any downward impulse instead of allowing the ball to pass through the ground. The foot-lift slider adds a small angular adjustment to this natural direction.
 
+When the ball returns to the grass, the simulation continues through bouncing, sliding, rolling without slipping, and finally stopping or reaching an obstacle. Sliding friction is based on the bottom point's velocity relative to the grass, so the kick force affects rolling indirectly through the ball's initial speed and spin. The interface includes controls for kinetic sliding friction, rolling resistance, and bounce restitution.
+
+The sliding force has magnitude `F_f = mu_k m g` and points opposite the slip velocity at the bottom of the ball. Its torque changes the spin until the rolling condition `v = omega R` is reached. Rolling resistance then slows the ball with `a = mu_r g`. Bounce height uses the coefficient of restitution. This is a useful introductory rigid-ball model; it does not attempt to model grass deformation, a finite bounce-contact interval, or speed-dependent turf behavior.
+
 Center contact with a force through the center produces almost no spin. Moving the contact left or right creates sidespin; changing the foot-lift adjustment creates additional topspin or backspin. PNG and CSV export buttons save the selected experiment in the `outputs` folder.
 
 This is an impulse model: force and contact duration are user inputs. It does not yet calculate the force from foot speed, ball deformation, or the effective mass of the leg.

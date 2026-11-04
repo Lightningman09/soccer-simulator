@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 from drag_simulation import Aerodynamics
+from ground_motion import GroundParameters, GroundResult, simulate_ground_motion
 from soccer_simulation import Field, Kick, trajectory
 from spin_simulation import Spin, SpinSimulation, simulate_spin
 
@@ -85,6 +86,13 @@ class ContactFlight:
     parameters: ContactParameters
     contact: ContactResult
     flight: SpinSimulation
+    ground: GroundResult | None
+
+    @property
+    def final_outcome(self) -> str:
+        if self.ground is not None:
+            return self.ground.outcome
+        return self.flight.shot.outcome
 
 
 def calculate_contact(parameters: ContactParameters) -> ContactResult:
@@ -194,6 +202,7 @@ def calculate_contact_flight(
     field: Field | None = None,
     aerodynamics: Aerodynamics | None = None,
     magnus_coefficient: float = 0.25,
+    ground_parameters: GroundParameters | None = None,
     time_step: float = 0.003,
 ) -> ContactFlight:
     """Calculate contact mechanics and pass the result to Model 3."""
@@ -202,6 +211,8 @@ def calculate_contact_flight(
         field = Field(wall_center=1.5)
     if aerodynamics is None:
         aerodynamics = Aerodynamics()
+    if ground_parameters is None:
+        ground_parameters = GroundParameters()
     contact = calculate_contact(parameters)
     flight = simulate_spin(
         contact.kick(initial_height=parameters.ball_radius),
@@ -210,8 +221,32 @@ def calculate_contact_flight(
         contact.spin(),
         magnus_coefficient,
         time_step=time_step,
+        ground_height=parameters.ball_radius,
     )
-    return ContactFlight(parameters, contact, flight)
+    blocked_in_air = flight.shot.reaches_wall and not flight.shot.avoids_wall
+    crossed_goal_in_air = flight.shot.reaches_goal
+    if blocked_in_air or crossed_goal_in_air:
+        ground = None
+    else:
+        angular_speed = contact.spin().angular_velocity()
+        ground = simulate_ground_motion(
+            impact_x=flight.x[-1],
+            impact_y=flight.y[-1],
+            impact_vx=flight.vx[-1],
+            impact_vy=flight.vy[-1],
+            impact_vz=flight.vz[-1],
+            omega_x=angular_speed[0],
+            omega_y=angular_speed[1],
+            omega_z=angular_speed[2],
+            radius=parameters.ball_radius,
+            mass=parameters.ball_mass,
+            field=field,
+            aerodynamics=aerodynamics,
+            magnus_coefficient=magnus_coefficient,
+            parameters=ground_parameters,
+            time_step=min(time_step, 0.003),
+        )
+    return ContactFlight(parameters, contact, flight, ground)
 
 
 def contact_summary(result: ContactFlight) -> str:
@@ -254,7 +289,7 @@ def contact_summary(result: ContactFlight) -> str:
             ),
             "",
             "FLIGHT RESULT",
-            flight.shot.outcome,
+            result.final_outcome,
             (
                 f"At wall y/z: {flight.shot.wall_lateral:+.2f} / "
                 f"{flight.shot.wall_height:.2f} m"
@@ -262,6 +297,11 @@ def contact_summary(result: ContactFlight) -> str:
             (
                 f"At goal y/z: {flight.shot.goal_lateral:+.2f} / "
                 f"{flight.shot.goal_height:.2f} m"
+            ),
+            (
+                f"Ground path after landing: {result.ground.path_distance:.2f} m"
+                if result.ground is not None
+                else "Ground phase: not reached before the result"
             ),
         ]
     )
@@ -285,8 +325,16 @@ def export_contact_csv(result: ContactFlight, path: str | Path) -> Path:
             "wall_height_m": result.flight.shot.wall_height,
             "goal_lateral_m": result.flight.shot.goal_lateral,
             "goal_height_m": result.flight.shot.goal_height,
-            "scores": result.flight.shot.scores,
-            "outcome": result.flight.shot.outcome,
+            "airborne_outcome": result.flight.shot.outcome,
+            "ground_path_m": (
+                result.ground.path_distance if result.ground is not None else 0.0
+            ),
+            "scores": (
+                result.ground.scores
+                if result.ground is not None
+                else result.flight.shot.scores
+            ),
+            "outcome": result.final_outcome,
         }
     )
     with destination.open("w", newline="", encoding="utf-8") as csv_file:
@@ -370,6 +418,30 @@ class KickContactSimulator:
             valinit=0.25,
             valstep=0.01,
         )
+        self.kinetic_friction = Slider(
+            self.figure.add_axes([0.10, 0.10, 0.22, 0.025], facecolor=slider_color),
+            "Sliding friction",
+            0.05,
+            0.8,
+            valinit=0.35,
+            valstep=0.01,
+        )
+        self.rolling_resistance = Slider(
+            self.figure.add_axes([0.48, 0.10, 0.20, 0.025], facecolor=slider_color),
+            "Rolling resistance",
+            0.005,
+            0.1,
+            valinit=0.025,
+            valstep=0.005,
+        )
+        self.restitution = Slider(
+            self.figure.add_axes([0.10, 0.04, 0.22, 0.025], facecolor=slider_color),
+            "Bounce restitution",
+            0,
+            0.8,
+            valinit=0.35,
+            valstep=0.05,
+        )
         self.save_graph_button = Button(
             self.figure.add_axes([0.75, 0.12, 0.10, 0.045]), "Save graph"
         )
@@ -389,6 +461,9 @@ class KickContactSimulator:
             self.wall_center,
             self.magnus,
             self.drag,
+            self.kinetic_friction,
+            self.rolling_resistance,
+            self.restitution,
         ):
             slider.on_changed(self._update)
         self.save_graph_button.on_clicked(self._save_graph)
@@ -407,11 +482,17 @@ class KickContactSimulator:
     def _calculate(self) -> ContactFlight:
         self.field = Field(wall_center=self.wall_center.val)
         aerodynamics = Aerodynamics(drag_coefficient=self.drag.val)
+        ground_parameters = GroundParameters(
+            kinetic_friction=self.kinetic_friction.val,
+            rolling_resistance=self.rolling_resistance.val,
+            restitution=self.restitution.val,
+        )
         return calculate_contact_flight(
             self._parameters(),
             self.field,
             aerodynamics,
             self.magnus.val,
+            ground_parameters,
         )
 
     def _draw_contact(self) -> None:
@@ -482,6 +563,15 @@ class KickContactSimulator:
             label="No aerodynamics",
         )
         axes.plot(flight.x, flight.y, flight.z, label="Contact-derived flight")
+        if self.result.ground is not None:
+            axes.plot(
+                self.result.ground.x,
+                self.result.ground.y,
+                self.result.ground.z,
+                color="tab:brown",
+                linewidth=2.5,
+                label="Bounce / slide / roll",
+            )
 
         wall_left = self.field.wall_center - self.field.wall_width / 2
         wall_right = self.field.wall_center + self.field.wall_width / 2
@@ -519,6 +609,11 @@ class KickContactSimulator:
         lateral_limit = max(
             self.field.goal_width / 2 + 1,
             max(abs(value) for value in flight.y) + 1,
+            (
+                max(abs(value) for value in self.result.ground.y) + 1
+                if self.result.ground is not None
+                else 0
+            ),
         )
         axes.set_xlim(0, max(self.field.goal_distance + 3, 25))
         axes.set_ylim(-lateral_limit, lateral_limit)

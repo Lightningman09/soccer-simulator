@@ -99,6 +99,15 @@ class ContactFlightTests(unittest.TestCase):
         self.assertIn("result_spin_rate_rpm", row)
         self.assertIn("outcome", row)
 
+    def test_high_contact_transitions_to_ground_motion_and_hits_wall(self):
+        result = calculate_contact_flight(
+            ContactParameters(contact_y=-0.058, contact_z=0.060)
+        )
+        self.assertIsNotNone(result.ground)
+        assert result.ground is not None
+        self.assertTrue(result.ground.hit_wall)
+        self.assertIn("wall", result.final_outcome)
+
 
 if __name__ == "__main__":
     unittest.main()
