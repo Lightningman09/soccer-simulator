@@ -1,6 +1,6 @@
 # PHY 221 Soccer Free-Kick Simulator
 
-This Python project builds a soccer free-kick simulation one physics model at a time. It now compares **ideal projectile motion** with a numerical model that includes **aerodynamic drag**, using the same defensive wall and regulation-size goal for both.
+This Python project builds a soccer free-kick simulation one physics model at a time. It compares **ideal projectile motion**, **aerodynamic drag**, and a three-dimensional **drag-plus-spin** model using the same defensive wall and regulation-size goal.
 
 ## Model 1: ideal projectile motion
 
@@ -40,6 +40,18 @@ Default physical values are:
 
 Because the drag force changes as the ball slows down, Model 2 uses a semi-implicit Euler numerical calculation rather than one equation for the whole flight. The program linearly interpolates the wall, goal, and ground crossings between time steps.
 
+## Model 3: spin and the Magnus force
+
+Model 3 uses three coordinates: x points toward the goal, y points sideways, and z points upward. It adds the Magnus force
+
+```text
+F_M = (1/2) rho C_M A r (omega x v)
+```
+
+where `omega x v` is the cross product of angular velocity and ball velocity. Spin about the vertical z-axis bends the ball sideways; spin about a horizontal axis can make it rise or dip. The default is 600 rpm of sidespin with a Magnus coefficient of 0.25.
+
+The wall now has adjustable width and lateral position. Model 3 checks whether the full ball goes above or around the wall, then whether it fits between both posts, below the crossbar, and above the ground.
+
 ## Run it
 
 Python 3.10 or newer is recommended. The calculations use only the Python standard library.
@@ -66,6 +78,25 @@ Change the physical inputs if desired:
 python drag_simulation.py --speed 25 --angle 30 --mass 0.43 --air-density 1.225 --drag-coefficient 0.25
 ```
 
+Run all three models and print their comparison:
+
+```powershell
+python spin_simulation.py
+```
+
+Reverse the curve by using a negative spin rate, or change the spin axis:
+
+```powershell
+python spin_simulation.py --spin-rpm -600
+python spin_simulation.py --spin-rpm 600 --spin-axis-y -1 --spin-axis-z 0
+```
+
+This verified example bends a lower kick around the left edge of an offset wall and into the goal:
+
+```powershell
+python spin_simulation.py --speed 20 --angle 20 --spin-rpm -600 --wall-center 1.5
+```
+
 Adjust the geometry:
 
 ```powershell
@@ -78,6 +109,7 @@ To display a trajectory plot with the wall, goal plane, and evaluation points, f
 python -m pip install -r requirements.txt
 python soccer_simulation.py --speed 20 --angle 20 --plot
 python drag_simulation.py --plot
+python spin_simulation.py --plot
 ```
 
 ## Test it
@@ -86,7 +118,7 @@ python drag_simulation.py --plot
 python -m unittest discover -s tests -v
 ```
 
-The tests verify the analytical baseline values, wall and goal decisions, the direction of the drag force, convergence to the ideal solution when drag is zero, and the expected reductions in maximum height and range.
+The tests verify the analytical baseline values, wall and goal decisions, drag behavior, Magnus-force direction, reversed-spin symmetry, zero-spin agreement with Model 2, and three-dimensional wall and goal geometry.
 
 ## Example results
 
@@ -100,4 +132,5 @@ The tests verify the analytical baseline values, wall and goal decisions, the di
 
 1. Ideal projectile motion — complete.
 2. Aerodynamic drag — complete.
-3. Drag plus ball spin and the Magnus force — next.
+3. Drag plus ball spin and the Magnus force — complete.
+4. Adjustable controls, experiments, validation, and final presentation material — next.

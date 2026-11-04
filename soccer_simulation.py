@@ -32,6 +32,8 @@ class Field:
     goal_width: float = 7.32
     goal_height: float = 2.44
     ball_radius: float = 0.11
+    wall_width: float = 3.0
+    wall_center: float = 0.0
 
 
 @dataclass(frozen=True)
